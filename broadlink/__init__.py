@@ -165,6 +165,8 @@ class device:
         self.decrypt = self.decrypt_pycrypto
 
   def encrypt_pyaes(self, payload):
+    print 'Creating AES instance with provided key {}, iv {}'.format( key, iv)
+    print("Encrypting payload")
     aes = pyaes.AESModeOfOperationCBC(self.key, iv = bytes(self.iv))
     return "".join([aes.encrypt(bytes(payload[i:i+16])) for i in range(0, len(payload), 16)])
 
@@ -181,6 +183,8 @@ class device:
     return aes.decrypt(bytes(payload))
 
   def auth(self):
+    print("Authentication method starts")
+    print("Constructing AuthCmdPayload")
     payload = bytearray(0x50)
     payload[0x04] = 0x31
     payload[0x05] = 0x31
@@ -206,8 +210,14 @@ class device:
     payload[0x34] = ord(' ')
     payload[0x35] = ord(' ')
     payload[0x36] = ord('1')
+    
+    print 'Sending CmdPacket with AuthCmdPayload: cmd=0x65 len={}'.format(len(payload))
+    print ''.join('{:02x}'.format(x) for x in payload)
 
     response = self.send_packet(0x65, payload)
+    
+    print 'Received datagram'
+    print ''.join('{:02x}'.format(x) for x in response)
 
     payload = self.decrypt(response[0x38:])
 
@@ -226,7 +236,12 @@ class device:
     return self.type
 
   def send_packet(self, command, payload):
+    print("Constructor CmdPacket starts")
+    print 'count= {} cmdPayload.cmd={:02x} payload.len={}'.format(self.count, command, len(payload))
     self.count = (self.count + 1) & 0xffff
+    print 'New count: {} (added by 1)'.format(self.count)
+    print("Creating byte array with data");
+
     packet = bytearray(0x38)
     packet[0x00] = 0x5a
     packet[0x01] = 0xa5
@@ -257,12 +272,16 @@ class device:
       numpad=(len(payload)//16+1)*16
       payload=payload.ljust(numpad,b"\x00")
 
+    print("Running checksum for headers");
     checksum = 0xbeaf
     for i in range(len(payload)):
       checksum += payload[i]
       checksum = checksum & 0xffff
 
+    print 'Headers checksum: {}'.format(checksum)
     payload = self.encrypt(payload)
+#    print ''.join('{:02x}'.format(x) for x in payload)
+    print 'Encrypted. len={}'.format(len(payload))
 
     packet[0x34] = checksum & 0xff
     packet[0x35] = checksum >> 8
@@ -270,12 +289,16 @@ class device:
     for i in range(len(payload)):
       packet.append(payload[i])
 
+    print("Running whole packet checksum");
     checksum = 0xbeaf
     for i in range(len(packet)):
       checksum += packet[i]
       checksum = checksum & 0xffff
+    print 'Whole packet checksum: {}'.format(checksum)
     packet[0x20] = checksum & 0xff
     packet[0x21] = checksum >> 8
+    print("End of CmdPacket constructor")
+    print ''.join('{:02x}'.format(x) for x in packet);
 
     starttime = time.time()
     with self.lock:
